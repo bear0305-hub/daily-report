@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3狀態三語自適應日報系統</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* A4 列印樣式優化 */
+    @media print {
+      body {
+        background: white;
+        color: black;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .print-only {
+        display: block !important;
+      }
+      .print-card {
+        border: 1px solid #ccc !important;
+        box-shadow: none !important;
+        break-inside: avoid;
+      }
+    }
+    /* 針對柬文字體行高微調以防重疊 */
+    html:lang(km) *, [lang="km"] * {
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen font-sans flex flex-col antialiased">
+
+  <!-- 頂部導覽列 (no-print) -->
+  <header class="bg-slate-900 text-white shadow-md no-print sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="bg-indigo-600 p-2 rounded-lg">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-wide" id="nav-title">日報管理系統</h1>
+          <div class="flex items-center space-x-1.5 mt-0.5">
+            <span class="inline-block w-2 h-2 rounded-full" id="sync-dot"></span>
+            <span class="text-[10px] font-semibold tracking-wide uppercase" id="sync-status">載入中 / Loading...</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="flex items-center space-x-2">
+        <!-- 三語系切換 -->
+        <div class="bg-slate-800 rounded-md p-1 flex space-x-1 border border-slate-700">
+          <button id="lang-zh" onclick="switchLanguage('zh')" class="px-2.5 py-1 text-xs font-semibold rounded transition-all bg-indigo-600 text-white">繁中</button>
+          <button id="lang-en" onclick="switchLanguage('en')" class="px-2.5 py-1 text-xs font-semibold rounded transition-all text-slate-400 hover:text-white">EN</button>
+          <button id="lang-km" onclick="switchLanguage('km')" class="px-2.5 py-1 text-xs font-semibold rounded transition-all text-slate-400 hover:text-white">ភាសាខ្មែរ</button>
+        </div>
+        
+        <!-- 重設按鈕 -->
+        <button onclick="confirmReset()" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-md text-xs font-medium flex items-center space-x-1 transition">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+          <span id="btn-reset-txt">清除重設</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主體區域 -->
+  <main class="flex-grow max-w-7xl w-full mx-auto px-4 py-6">
+    
+    <!-- 新增任務區塊 (no-print) -->
+    <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 mb-6 no-print">
+      <h2 class="text-md font-bold text-slate-800 mb-4 flex items-center" id="form-title">
+        <svg class="w-5 h-5 mr-1.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        發布新工作
+      </h2>
+      <form id="task-form" onsubmit="addTask(event)" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1" id="lbl-task-title">工作名稱/任務內容</label>
+          <input type="text" id="input-title" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="例如：1F地坪打底、材料進場">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1" id="lbl-task-owner">指派負責人</label>
+          <input type="text" id="input-owner" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="例如：王小明、施師傅">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1" id="lbl-task-date">指定日期</label>
+          <input type="date" id="input-date" required class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm py-2 px-4 rounded-lg shadow transition flex items-center justify-center space-x-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            <span id="btn-add-txt">指派新工作</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 快捷功能區 (no-print) -->
+    <div class="flex flex-wrap gap-2 mb-6 no-print">
+      <button onclick="openExportModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-lg shadow-sm flex items-center space-x-1.5 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+        <span id="btn-export-txt">產生 WeChat / Telegram 報表</span>
+      </button>
+      <button onclick="window.print()" class="bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold px-4 py-2.5 rounded-lg shadow-sm flex items-center space-x-1.5 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+        <span id="btn-print-txt">列印 A4 紙本報表</span>
+      </button>
+      <button onclick="loadSampleData()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold px-4 py-2.5 rounded-lg flex items-center space-x-1.5 transition">
+        <span id="btn-sample-txt">載入範例任務</span>
+      </button>
+    </div>
+
+    <!-- 行動端切換頁籤 (僅在手機/平板顯示) -->
+    <div class="flex lg:hidden bg-white border border-slate-200 rounded-xl p-1 mb-5 no-print shadow-sm">
+      <button id="tab-btn-todo" onclick="switchMobileTab('todo')" class="flex-1 py-2.5 rounded-lg text-xs font-bold transition duration-200 flex items-center justify-center space-x-1 bg-slate-200 text-slate-800">
+        <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+        <span id="tab-txt-todo">新工作</span>
+        <span id="tab-badge-todo" class="bg-slate-300 text-slate-700 text-[10px] px-2 py-0.5 rounded-full ml-1 font-mono">0</span>
+      </button>
+      <button id="tab-btn-doing" onclick="switchMobileTab('doing')" class="flex-1 py-2.5 rounded-lg text-xs font-bold transition duration-200 flex items-center justify-center space-x-1 text-slate-500 hover:bg-slate-50">
+        <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+        <span id="tab-txt-doing">進行中</span>
+        <span id="tab-badge-doing" class="bg-slate-100 text-slate-500 text-[10px] px-2 py-0.5 rounded-full ml-1 font-mono">0</span>
+      </button>
+      <button id="tab-btn-done" onclick="switchMobileTab('done')" class="flex-1 py-2.5 rounded-lg text-xs font-bold transition duration-200 flex items-center justify-center space-x-1 text-slate-500 hover:bg-slate-50">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+        <span id="tab-txt-done">已完成</span>
+        <span id="tab-badge-done" class="bg-slate-100 text-slate-500 text-[10px] px-2 py-0.5 rounded-full ml-1 font-mono">0</span>
+      </button>
+    </div>
+
+    <!-- 看板主介面 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- 欄位一：新工作 / TODO -->
+      <div id="col-todo-wrapper" class="flex flex-col h-full bg-slate-100 rounded-xl p-4 border border-slate-200 print-card">
+        <div class="flex justify-between items-center mb-4 pb-2 border-b border-slate-200">
+          <div class="flex items-center space-x-2">
+            <span class="w-3 h-3 rounded-full bg-slate-400"></span>
+            <h3 class="font-bold text-slate-700 text-sm md:text-base" id="col-todo-title">新工作 (未開始)</h3>
+          </div>
+          <span class="bg-slate-200 text-slate-700 text-xs font-bold px-2.5 py-0.5 rounded-full font-mono" id="count-todo">0</span>
+        </div>
+        <div id="column-todo" class="space-y-3 flex-grow min-h-[150px]">
+          <!-- 卡片動態插入 -->
+        </div>
+      </div>
+
+      <!-- 欄位二：進行中的工作 / DOING -->
+      <div id="col-doing-wrapper" class="flex flex-col h-full bg-amber-50 rounded-xl p-4 border border-amber-200 print-card">
+        <div class="flex justify-between items-center mb-4 pb-2 border-b border-amber-200">
+          <div class="flex items-center space-x-2">
+            <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+            <h3 class="font-bold text-amber-800 text-sm md:text-base" id="col-doing-title">進行中的工作</h3>
+          </div>
+          <span class="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-full font-mono" id="count-doing">0</span>
+        </div>
+        <div id="column-doing" class="space-y-3 flex-grow min-h-[150px]">
+          <!-- 卡片動態插入 -->
+        </div>
+      </div>
+
+      <!-- 欄位三：完成的工作 / DONE -->
+      <div id="col-done-wrapper" class="flex flex-col h-full bg-emerald-50 rounded-xl p-4 border border-emerald-200 print-card">
+        <div class="flex justify-between items-center mb-4 pb-2 border-b border-emerald-200">
+          <div class="flex items-center space-x-2">
+            <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+            <h3 class="font-bold text-emerald-800 text-sm md:text-base" id="col-done-title">已完成的工作</h3>
+          </div>
+          <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full font-mono" id="count-done">0</span>
+        </div>
+        <div id="column-done" class="space-y-3 flex-grow min-h-[150px]">
+          <!-- 卡片動態插入 -->
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 紙本簽核專用區 (僅在 A4 列印時顯示) -->
+    <div class="hidden print-only mt-12 pt-8 border-t border-dashed border-slate-300">
+      <div class="grid grid-cols-2 gap-8 text-center text-sm">
+        <div>
+          <p class="mb-12 font-semibold" id="print-signature-contractor">承包商代表簽章 (Contractor Signature)</p>
+          <div class="border-b border-slate-400 w-48 mx-auto"></div>
+        </div>
+        <div>
+          <p class="mb-12 font-semibold" id="print-signature-client">甲方監督人員簽章 (Client Representative)</p>
+          <div class="border-b border-slate-400 w-48 mx-auto"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 頁尾 (no-print) -->
+  <footer class="bg-slate-100 border-t border-slate-200 py-4 no-print mt-12 text-center text-xs text-slate-400">
+    <p>3-Stage Trilingual Kanban Board © 2026. Self-contained Offline & Live Sync App.</p>
+  </footer>
+
+  <!-- ==================== 自訂互動視窗 (Modals) ==================== -->
+
+  <!-- 1. 編輯任務視窗 -->
+  <div id="edit-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden no-print">
+    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden transform transition-all">
+      <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+        <h3 class="font-bold text-sm" id="modal-edit-title">編輯工作回報與進度</h3>
+        <button onclick="closeEditModal()" class="text-slate-400 hover:text-white transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div class="p-5 space-y-4">
+        <input type="hidden" id="edit-task-id">
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1" id="lbl-edit-name">工作名稱</label>
+          <input type="text" id="edit-input-title" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1" id="lbl-edit-owner">負責人</label>
+          <input type="text" id="edit-input-owner" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1" id="lbl-edit-progress">今日詳細進度描述 (百分比或細節)</label>
+          <textarea id="edit-input-progress" rows="3" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" placeholder="例如：磁磚鋪設進度達80% / 今日材料皆已點收完畢。"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1" id="lbl-edit-issue">現場異常/突發狀況 (若無則留空)</label>
+          <input type="text" id="edit-input-issues" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 text-rose-600 placeholder-rose-300" placeholder="例如：下午14:00突發雷雨，戶外施工作業暫停一小時">
+        </div>
+      </div>
+      <div class="bg-slate-50 p-4 border-t border-slate-200 flex justify-end space-x-2">
+        <button onclick="closeEditModal()" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition" id="btn-edit-cancel">取消</button>
+        <button onclick="saveTaskEdit()" class="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition" id="btn-edit-save">儲存修改</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 匯出對話框 -->
+  <div id="export-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden no-print">
+    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-2xl overflow-hidden transform transition-all">
+      <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+        <h3 class="font-bold text-sm" id="modal-export-title">產生專案日報表</h3>
+        <button onclick="closeExportModal()" class="text-slate-400 hover:text-white transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      
+      <!-- 平台切換按鈕 -->
+      <div class="bg-slate-100 p-3 border-b border-slate-200 flex space-x-2">
+        <button id="tab-wechat" onclick="switchExportPlatform('wechat')" class="flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1 bg-emerald-600 text-white">
+          <span>WeChat 格式 (純文字)</span>
+        </button>
+        <button id="tab-telegram" onclick="switchExportPlatform('telegram')" class="flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1 bg-slate-200 text-slate-700 hover:bg-slate-300">
+          <span>Telegram 格式 (MD 粗體)</span>
+        </button>
+      </div>
+
+      <div class="p-5">
+        <textarea id="export-textarea" readonly class="w-full h-80 p-3 bg-slate-900 text-emerald-400 rounded-lg font-mono text-xs focus:outline-none focus:ring-0 resize-none border border-slate-700"></textarea>
+      </div>
+
+      <div class="bg-slate-50 p-4 border-t border-slate-200 flex justify-between items-center">
+        <span class="text-xs text-slate-500" id="txt-export-tip">點選下方按鈕直接複製，回到 WeChat 或 Telegram 按貼上即可。</span>
+        <div class="flex space-x-2">
+          <button onclick="closeExportModal()" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition" id="btn-export-close">關閉</button>
+          <button id="btn-copy-action" onclick="copyReportToClipboard()" class="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition flex items-center space-x-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+            <span id="btn-copy-txt">一鍵複製報表</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. 自訂確認提示框 -->
+  <div id="confirm-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4 hidden no-print">
+    <div class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm overflow-hidden transform transition-all">
+      <div class="p-5 text-center">
+        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-rose-100 text-rose-600 mb-4">
+          <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+        </div>
+        <h3 class="text-md font-bold text-slate-900 mb-2" id="confirm-title">確認執行此動作？</h3>
+        <p class="text-xs text-slate-500" id="confirm-message">此動作無法復原，請確認是否繼續。</p>
+      </div>
+      <div class="bg-slate-50 px-4 py-3 flex flex-row-reverse space-x-2 space-x-reverse justify-center border-t border-slate-200">
+        <button id="confirm-btn-yes" class="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 bg-rose-600 text-xs font-semibold text-white hover:bg-rose-700 focus:outline-none transition">確認</button>
+        <button id="confirm-btn-no" onclick="closeConfirmModal()" class="w-full inline-flex justify-center rounded-lg border border-slate-300 shadow-sm px-4 py-2 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100 focus:outline-none transition">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. 自訂提示框 -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-3 rounded-lg shadow-xl border border-slate-700 z-50 transform translate-y-20 opacity-0 transition-all duration-300 flex items-center space-x-2 text-xs no-print">
+    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+    <span id="toast-message">完成！</span>
+  </div>
+
+  <!-- ==================== 系統核心 JavaScript 邏輯 (Firebase SDK 11.6.1 ESM) ==================== -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // 1. 全域資料狀態
+    let currentLang = 'zh';
+    let currentExportPlatform = 'wechat'; 
+    let activeMobileTab = 'todo'; 
+    let tasks = [];
+    let activeConfirmAction = null;
+
+    // 雲端連線狀態控制
+    let isCloudMode = false;
+    let db = null;
+    let auth = null;
+    let appId = 'default-app-id';
+    let firestoreUnsubscribe = null;
+
+    // 2. 三語系翻譯字典庫
+    const translations = {
+      zh: {
+        navTitle: "日報管理系統",
+        formTitle: "發布新工作",
+        lblTaskTitle: "工作名稱/任務內容",
+        lblTaskOwner: "指派負責人",
+        lblTaskDate: "指定日期",
+        btnAddTask: "指派新工作",
+        btnReset: "清除重設",
+        btnExport: "產生 WeChat / Telegram 報表",
+        btnPrint: "列印 A4 紙本報表",
+        btnSample: "載入範例任務",
+        colTodo: "新工作 (未開始)",
+        colDoing: "進行中的工作",
+        colDone: "已完成的工作",
+        placeholderTitle: "例如：1F地坪打底、材料進場",
+        placeholderOwner: "例如：王小明、施師傅",
+        colTodoMobile: "新工作",
+        colDoingMobile: "進行中",
+        colDoneMobile: "已完成",
+        modalEditTitle: "編輯工作回報與進度",
+        lblEditName: "工作名稱",
+        lblEditOwner: "負責人",
+        lblEditProgress: "今日詳細進度描述 (百分比或細節)",
+        lblEditIssue: "現場異常/突發狀況 (若無則留空)",
+        placeholderProgress: "例如：磁磚鋪設進度達80% / 今日材料皆已點收完畢。",
+        placeholderIssue: "例如：下午14:00突發雷雨，戶外施工作業暫停一小時",
+        btnEditCancel: "取消",
+        btnEditSave: "儲存修改",
+        modalExportTitle: "產生專案日報表",
+        txtExportTip: "點選下方按鈕直接複製，回到 WeChat 或 Telegram 按貼上即可。",
+        btnExportClose: "關閉",
+        btnCopyAction: "一鍵複製報表",
+        btnStart: "動工",
+        btnDone: "做完了",
+        btnEdit: "編輯",
+        btnDelete: "刪除",
+        toastCopySuccess: "複製成功！已存至您的剪貼簿。",
+        toastSaveSuccess: "任務儲存成功！",
+        toastTaskAdded: "成功指派新任務！",
+        confirmResetTitle: "重設整個看板？",
+        confirmResetMsg: "此操作將清除所有任務紀錄且無法復原，是否繼續？",
+        confirmDeleteTitle: "刪除工作項目？",
+        confirmDeleteMsg: "您確定要永久刪除此任務項目嗎？",
+        statusNoStarted: "(尚未開始施工)",
+        statusDoing: "正在現場施工中...",
+        statusDone: "今天已順利完工！",
+        printContractor: "承包商代表簽章 (Contractor Signature)",
+        printClient: "甲方監督人員簽章 (Client Representative)"
+      },
+      en: {
+        navTitle: "Daily Report System",
+        formTitle: "Assign New Task",
+        lblTaskTitle: "Task Name / Description",
+        lblTaskOwner: "Assignee / Owner",
+        lblTaskDate: "Target Date",
+        btnAddTask: "Assign Task",
+        btnReset: "Reset Board",
+        btnExport: "Generate WeChat / Telegram Report",
+        btnPrint: "Print A4 Daily Sheet",
+        btnSample: "Load Demo Tasks",
+        colTodo: "Todo (Not Started)",
+        colDoing: "In Progress",
+        colDone: "Completed",
+        placeholderTitle: "e.g., 1F Flooring, Materials Arrival",
+        placeholderOwner: "e.g., John Doe, Technician",
+        colTodoMobile: "Todo",
+        colDoingMobile: "Doing",
+        colDoneMobile: "Done",
+        modalEditTitle: "Edit Work Status & Progress",
+        lblEditName: "Task Title",
+        lblEditOwner: "Assignee",
+        lblEditProgress: "Today's Detailed Progress / Description",
+        lblEditIssue: "Site Anomalies / Issues (Leave blank if none)",
+        placeholderProgress: "e.g., Tiling progress reaches 80% / Materials received.",
+        placeholderIssue: "e.g., Sudden thunderstorm at 2 PM, outdoor work suspended for 1 hr.",
+        btnEditCancel: "Cancel",
+        btnEditSave: "Save Changes",
+        modalExportTitle: "Generate Project Daily Report",
+        txtExportTip: "Click the copy button below, then paste directly into WeChat or Telegram.",
+        btnExportClose: "Close",
+        btnCopyAction: "Copy to Clipboard",
+        btnStart: "Start",
+        btnDone: "Complete",
+        btnEdit: "Edit",
+        btnDelete: "Delete",
+        toastCopySuccess: "Copied! Saved to your clipboard.",
+        toastSaveSuccess: "Task saved successfully!",
+        toastTaskAdded: "New task assigned!",
+        confirmResetTitle: "Reset Entire Board?",
+        confirmResetMsg: "This action will permanently erase all task records. Proceed?",
+        confirmDeleteTitle: "Delete Task Item?",
+        confirmDeleteMsg: "Are you sure you want to permanently delete this task?",
+        statusNoStarted: "(Not started yet)",
+        statusDoing: "In progress on site...",
+        statusDone: "Completed successfully today!",
+        printContractor: "Contractor Representative Signature",
+        printClient: "Client Representative Signature"
+      },
+      km: {
+        navTitle: "ប្រព័ន្ធគ្រប់គ្រងរបាយការណ៍ប្រចាំថ្ងៃ",
+        formTitle: "ប្រគល់ភារកិច្ចថ្មី",
+        lblTaskTitle: "ឈ្មោះការងារ / ខ្លឹមសារភារកិច្ច",
+        lblTaskOwner: "អ្នកទទួលខុសត្រូវ",
+        lblTaskDate: "កាលបរិច្ឆេទកំណត់",
+        btnAddTask: "ប្រគល់ការងារ",
+        btnReset: "កំណត់ក្តារឡើងវិញ",
+        btnExport: "បង្កើតរបាយការណ៍ WeChat / Telegram",
+        btnPrint: "បោះពុម្ពរបាយការណ៍ A4",
+        btnSample: "ទាញយកទិន្នន័យគំរូ",
+        colTodo: "ការងារថ្មី (មិនទាន់ចាប់ផ្តើម)",
+        colDoing: "កំពុងដំណើរការ",
+        colDone: "សម្រេចបានទាំងស្រុង",
+        placeholderTitle: "ឧទាហរណ៍៖ ចាក់សាបឥដ្ឋជាន់ទី១, សម្ភារៈចូលការដ្ឋាន",
+        placeholderOwner: "ឧទាហរណ៍៖ វណ្ណា, លីដា",
+        colTodoMobile: "ការងារថ្មី",
+        colDoingMobile: "កំពុងធ្វើ",
+        colDoneMobile: "រួចរាល់",
+        modalEditTitle: "កែសម្រួលរបាយការណ៍ និងវឌ្ឍនភាពការងារ",
+        lblEditName: "ឈ្មោះការងារ",
+        lblEditOwner: "អ្នកទទួលខុសត្រូវ",
+        lblEditProgress: "ពិពណ៌នាវឌ្ឍនភាពលម្អិតថ្ងៃនេះ (ភាគរយ ឬព័ត៌មានលម្អិត)",
+        lblEditIssue: "បញ្ហាមិនប្រក្រតី / ស្ថានភាពបន្ទាន់ (ទុកទំនេរបើគ្មាន)",
+        placeholderProgress: "ឧទាហរណ៍៖ ការងារក្រាលការ៉ូសម្រេចបាន ៨០% / ពិនិត្យសម្ភារៈរួចរាល់។",
+        placeholderIssue: "ឧទាហរណ៍៖ ម៉ោង ២ រសៀលមានភ្លៀងធ្លាក់ខ្លាំង ផ្អាកការងារខាងក្រៅ ១ ម៉ោង",
+        btnEditCancel: "បោះបង់",
+        btnEditSave: "រក្សាទុកការផ្លាស់ប្តូរ",
+        modalExportTitle: "បង្កើតរបាយការណ៍គម្រោងប្រចាំថ្ងៃ",
+        txtExportTip: "ចុចប៊ូតុងខាងក្រោមដើម្បីចម្លង រួចយកទៅផាស (Paste) ក្នុង WeChat ឬ Telegram។",
+        btnExportClose: "បិទ",
+        btnCopyAction: "ចម្លងរបាយការណ៍",
+        btnStart: "ចាប់ផ្តើម",
+        btnDone: "រួចរាល់",
+        btnEdit: "កែសម្រួល",
+        btnDelete: "លុប",
+        toastCopySuccess: "ចម្លងបានជោគជ័យ! បានរក្សាទុកក្នុង Clipboard របស់អ្នក។",
+        toastSaveSuccess: "រក្សាទុកភារកិច្ចជោគជ័យ!",
+        toastTaskAdded: "ប្រគល់ភារកិច្ចថ្មីដោយជោគជ័យ!",
+        confirmResetTitle: "កំណត់ក្តារឡើងវិញទាំងស្រុង?",
+        confirmResetMsg: "សកម្មភាពនេះនឹងលុបប្រវត្តិការងារទាំងអស់ ហើយមិនអាចយកមកវិញបានទេ។ តើអ្នកចង់បន្តទេ?",
+        confirmDeleteTitle: "លុបធាតុការងារ?",
+        confirmDeleteMsg: "តើអ្នកប្រាកដជាចង់លុបភារកិច្ចនេះជាអចិន្ត្រៃយ៍មែនទេ?",
+        statusNoStarted: "(មិនទាន់ចាប់ផ្តើមការដ្ឋាន)",
+        statusDoing: "កំពុងដំណើរការសាងសង់...",
+        statusDone: "បានសម្រេចការងារថ្ងៃនេះ!",
+        printContractor: "ហត្ថលេខាតំណាងអ្នកម៉ៅការ (Contractor Signature)",
+        printClient: "ហត្ថលេខាតំណាងភាគីក (Client Representative)"
+      }
+    };
+
+    // 3. 雙模自適應初始化核心 (完美保證單機 100% 打得開、不當機)
+    const initSystem = async () => {
+      const syncDot = document.getElementById('sync-dot');
+      const syncStatus = document.getElementById('sync-status');
+
+      // 安全判定環境是否有外部注入的 Firebase 參數
+      let hasConfig = false;
+      let firebaseConfig = null;
+
+      if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+        try {
+          firebaseConfig = JSON.parse(__firebase_config);
+          hasConfig = true;
+        } catch (e) {
+          console.warn("無法解析雲端 Firebase 參數", e);
+        }
+      }
+
+      if (hasConfig && firebaseConfig) {
+        // A. 啟動【🟢 雲端同步連網版模式】
+        try {
+          const app = initializeApp(firebaseConfig);
+          auth = getAuth(app);
+          db = getFirestore(app);
+          appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+          isCloudMode = true;
+
+          syncDot.className = "inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
+          syncStatus.innerText = "雲端即時連線中 (Live Cloud Sync)";
+          syncStatus.className = "text-[10px] font-bold tracking-wide text-emerald-400 uppercase";
+
+          // Firebase 登入與同步 (RULE 3 防禦)
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            await signInWithCustomToken(auth, __initial_auth_token);
+          } else {
+            await signInAnonymously(auth);
+          }
+
+          onAuthStateChanged(auth, (user) => {
+            if (user) {
+              startFirestoreSync();
+            } else {
+              if (firestoreUnsubscribe) firestoreUnsubscribe();
+              switchToOfflineMode(syncDot, syncStatus);
+            }
+          });
+        } catch (err) {
+          console.error("Firebase 初始化失敗，自動切換至離線模式:", err);
+          switchToOfflineMode(syncDot, syncStatus);
+        }
+      } else {
+        // B. 啟動【🟡 離線快取儲存模式】
+        switchToOfflineMode(syncDot, syncStatus);
+      }
+    };
+
+    // 切換至離線模式
+    function switchToOfflineMode(dot, status) {
+      isCloudMode = false;
+      dot.className = "inline-block w-2 h-2 rounded-full bg-amber-500";
+      status.innerText = "離線儲存模式 (Offline Local Mode)";
+      status.className = "text-[10px] font-bold tracking-wide text-amber-500 uppercase";
+      
+      const savedTasks = localStorage.getItem('kanban_daily_tasks');
+      if (savedTasks) {
+        tasks = JSON.parse(savedTasks);
+      } else {
+        loadSampleData(true);
+      }
+      renderBoard();
+    }
+
+    // 4. 即時雲端資料庫監聽 (RULE 1 & 2)
+    function startFirestoreSync() {
+      if (!isCloudMode || !auth.currentUser) return;
+      const tasksCollection = collection(db, 'artifacts', appId, 'public', 'data', 'tasks');
+
+      if (firestoreUnsubscribe) firestoreUnsubscribe();
+
+      firestoreUnsubscribe = onSnapshot(tasksCollection, (snapshot) => {
+        tasks = [];
+        snapshot.forEach((doc) => {
+          tasks.push({ id: doc.id, ...doc.data() });
+        });
+
+        // 規則 2：不使用 complex query，在 JS 記憶體中排序
+        tasks.sort((a, b) => {
+          const timeA = a.createdAt || 0;
+          const timeB = b.createdAt || 0;
+          return timeB - timeA;
+        });
+
+        renderBoard();
+      }, (error) => {
+        console.error("Firestore 即時監聽出錯:", error);
+        showToast("雲端同步連線中斷！");
+      });
+    }
+
+    // 5. 新增任務邏輯 (自動切換本地與雲端)
+    async function addTask(e) {
+      e.preventDefault();
+      const title = document.getElementById('input-title').value.trim();
+      const owner = document.getElementById('input-owner').value.trim();
+      const date = document.getElementById('input-date').value;
+
+      if (!title || !owner || !date) return;
+
+      const newTask = {
+        title,
+        owner,
+        date,
+        status: 'todo',
+        progress: '',
+        issues: '',
+        createdAt: Date.now()
+      };
+
+      if (isCloudMode && auth.currentUser) {
+        try {
+          const tasksCollection = collection(db, 'artifacts', appId, 'public', 'data', 'tasks');
+          await addDoc(tasksCollection, newTask);
+          document.getElementById('input-title').value = '';
+          document.getElementById('input-owner').value = '';
+          showToast(translations[currentLang].toastTaskAdded);
+        } catch (error) {
+          console.error("Firestore 新增工作失敗:", error);
+          showToast("雲端新增失敗！");
+        }
+      } else {
+        newTask.id = 'task_' + Date.now();
+        tasks.push(newTask);
+        saveToLocalStorage();
+        renderBoard();
+        document.getElementById('input-title').value = '';
+        document.getElementById('input-owner').value = '';
+        showToast(translations[currentLang].toastTaskAdded);
+      }
+    }
+
+    // 保存至瀏覽器快取 (離線模式)
+    function saveToLocalStorage() {
+      if (!isCloudMode) {
+        localStorage.setItem('kanban_daily_tasks', JSON.stringify(tasks));
+      }
+    }
+
+    // 6. 編輯與儲存工作內容
+    async function saveTaskEdit() {
+      const id = document.getElementById('edit-task-id').value;
+      const title = document.getElementById('edit-input-title').value.trim();
+      const owner = document.getElementById('edit-input-owner').value.trim();
+      const progress = document.getElementById('edit-input-progress').value.trim();
+      const issues = document.getElementById('edit-input-issues').value.trim();
+
+      if (isCloudMode && auth.currentUser) {
+        try {
+          const taskDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'tasks', id);
+          await updateDoc(taskDocRef, { title, owner, progress, issues });
+          closeEditModal();
+          showToast(translations[currentLang].toastSaveSuccess);
+        } catch (error) {
+          console.error("Firestore 修改任務失敗:", error);
+          showToast("雲端修改失敗！");
+        }
+      } else {
+        const idx = tasks.findIndex(t => t.id === id);
+        if (idx > -1) {
+          tasks[idx].title = title;
+          tasks[idx].owner = owner;
+          tasks[idx].progress = progress;
+          tasks[idx].issues = issues;
+          saveToLocalStorage();
+          renderBoard();
+          closeEditModal();
+          showToast(translations[currentLang].toastSaveSuccess);
+        }
+      }
+    }
+
+    // 7. 變更狀態
+    async function moveTask(id, newStatus) {
+      if (isCloudMode && auth.currentUser) {
+        try {
+          const taskDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'tasks', id);
+          await updateDoc(taskDocRef, { status: newStatus });
+          showToast(translations[currentLang].toastSaveSuccess);
+        } catch (error) {
+          console.error("Firestore 移動狀態失敗:", error);
+          showToast("雲端更新失敗！");
+        }
+      } else {
+        const idx = tasks.findIndex(t => t.id === id);
+        if (idx > -1) {
+          tasks[idx].status = newStatus;
+          saveToLocalStorage();
+          renderBoard();
+          showToast(translations[currentLang].toastSaveSuccess);
+        }
+      }
+    }
+
+    // 8. 刪除任務
+    function confirmDelete(id) {
+      const d = translations[currentLang];
+      showCustomConfirm(
+        d.confirmDeleteTitle,
+        d.confirmDeleteMsg,
+        async () => {
+          if (isCloudMode && auth.currentUser) {
+            try {
+              const taskDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'tasks', id);
+              await deleteDoc(taskDocRef);
+              showToast(currentLang === 'zh' ? "工作項目已刪除！" : (currentLang === 'en' ? "Task deleted!" : "ការងារត្រូវបានលុបចោល!"));
+            } catch (error) {
+              console.error("Firestore 刪除任務失敗:", error);
+              showToast("雲端刪除失敗！");
+            }
+          } else {
+            tasks = tasks.filter(t => t.id !== id);
+            saveToLocalStorage();
+            renderBoard();
+            showToast(currentLang === 'zh' ? "工作項目已刪除！" : (currentLang === 'en' ? "Task deleted!" : "ការងារត្រូវបានលុបចោល!"));
+          }
+        }
+      );
+    }
+
+    // 9. 清除重設整個看板
+    function confirmReset() {
+      const d = translations[currentLang];
+      showCustomConfirm(
+        d.confirmResetTitle,
+        d.confirmResetMsg,
+        async () => {
+          if (isCloudMode && auth.currentUser) {
+            try {
+              for (const t of tasks) {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tasks', t.id);
+                await deleteDoc(docRef);
+              }
+              showToast(currentLang === 'zh' ? "看板已清除重置！" : (currentLang === 'en' ? "Board has been reset!" : "ក្តារព័ត៌មានត្រូវបានសម្អាតរួចរាល់!"));
+            } catch (error) {
+              console.error("Firestore 重設看板失敗:", error);
+              showToast("雲端重設失敗！");
+            }
+          } else {
+            tasks = [];
+            saveToLocalStorage();
+            renderBoard();
+            showToast(currentLang === 'zh' ? "看板已清除重置！" : (currentLang === 'en' ? "Board has been reset!" : "ក្តារព័ត៌មានត្រូវបានសម្អាតរួចរាល់!"));
+          }
+        }
+      );
+    }
+
+    // 10. 載入範例任務
+    async function loadSampleData(isInitial = false) {
+      const today = new Date().toISOString().split('T')[0];
+      const demoData = [
+        { 
+          title: currentLang === 'zh' ? "3F 水電管線預埋" : (currentLang === 'en' ? "3F Water-Pipe Pre-burying" : "ការងារបង្កប់ទុយោទឹកភ្លើងជាន់ទី៣"), 
+          owner: currentLang === 'zh' ? "施師傅" : (currentLang === 'en' ? "Mr. Shih" : "វណ្ណា"), 
+          date: today, 
+          status: 'todo', 
+          progress: '', 
+          issues: '',
+          createdAt: Date.now()
+        },
+        { 
+          title: currentLang === 'zh' ? "B 棟基礎開挖與排泥" : (currentLang === 'en' ? "B-Building Foundation Digging" : "ការងារជីកគ្រឹះ និងបូមភក់អគារ B"), 
+          owner: currentLang === 'zh' ? "陳班長" : (currentLang === 'en' ? "Captain Chen" : "លីដា"), 
+          date: today, 
+          status: 'doing', 
+          progress: currentLang === 'zh' ? "目前開挖進度達 70%，進度正常" : (currentLang === 'en' ? "Digging reaches 70%, progress on track." : "ការជីកគ្រឹះសម្រេចបាន ៧០% វឌ្ឍនភាពធម្មតា"), 
+          issues: '',
+          createdAt: Date.now() - 1000
+        },
+        { 
+          title: currentLang === 'zh' ? "機房高架地板水平調整" : (currentLang === 'en' ? "Machine Room Raised Floor Adjustment" : "ការងារតម្រឹមផ្ទៃកម្រាលកើនឡើងបន្ទប់ម៉ាស៊ីន"), 
+          owner: currentLang === 'zh' ? "張工程師" : (currentLang === 'en' ? "Eng. Chang" : "សុខា"), 
+          date: today, 
+          status: 'doing', 
+          progress: currentLang === 'zh' ? "已調整三分之二區塊" : (currentLang === 'en' ? "Two-thirds of the section completed." : "បានកែសម្រួល២ភាគ៣នៃផ្ទៃក្រឡារួចរាល់"), 
+          issues: currentLang === 'zh' ? "現場發現地面局部滲水，已通知物管處理" : (currentLang === 'en' ? "Found local ground water leakage, notified management." : "រកឃើញការលេចធ្លាយទឹកលើដី បានជម្រាបទៅផ្នែកគ្រប់គ្រងរួចហើយ"),
+          createdAt: Date.now() - 2000
+        },
+        { 
+          title: currentLang === 'zh' ? "1F 門廳水泥地坪打底" : (currentLang === 'en' ? "1F Lobby Concrete Base Laying" : "ការងារចាក់សាបបេតុងបាតជាន់ទី១"), 
+          owner: currentLang === 'zh' ? "王小明" : (currentLang === 'en' ? "Xiao-Ming Wang" : "ពិសិដ្ឋ"), 
+          date: today, 
+          status: 'done', 
+          progress: currentLang === 'zh' ? "已澆置完畢並抹平乾操" : (currentLang === 'en' ? "Laying done and smoothed out." : "បានចាក់បេតុងរួចរាល់ និងលាបឱ្យរលោង"), 
+          issues: '',
+          createdAt: Date.now() - 3000
+        }
+      ];
+
+      if (isInitial) {
+        if (!isCloudMode) {
+          tasks = demoData;
+          saveToLocalStorage();
+        }
+      } else {
+        showCustomConfirm(
+          currentLang === 'zh' ? "載入測試資料？" : (currentLang === 'en' ? "Load Demo Tasks?" : "ទាញយកទិន្នន័យគំរូ?"),
+          currentLang === 'zh' ? "此動作將會大量新增範例任務到看板，是否繼續？" : (currentLang === 'en' ? "This will add several demo tasks to the board. Proceed?" : "សកម្មភាពនេះនឹងបន្ថែមភារកិច្ចគំរូទៅក្នុងក្តារ តើអ្នកចង់បន្តទេ?"),
+          async () => {
+            if (isCloudMode && auth.currentUser) {
+              try {
+                const tasksCollection = collection(db, 'artifacts', appId, 'public', 'data', 'tasks');
+                for (const item of demoData) {
+                  await addDoc(tasksCollection, item);
+                }
+                showToast(currentLang === 'zh' ? "已成功載入測試任務！" : (currentLang === 'en' ? "Demo tasks loaded successfully!" : "បានទាញយកទិន្នន័យគំរូជោគជ័យ!"));
+              } catch (error) {
+                console.error("雲端載入範例失敗:", error);
+                showToast("載入雲端範例失敗！");
+              }
+            } else {
+              tasks = demoData;
+              saveToLocalStorage();
+              renderBoard();
+              showToast(currentLang === 'zh' ? "已成功載入測試任務！" : (currentLang === 'en' ? "Demo tasks loaded successfully!" : "បានទាញយកទិន្នន័យគំរូជោគជ័យ!"));
+            }
+          }
+        );
+      }
+    }
+
+    // 11. 語系切換
+    function switchLanguage(lang) {
+      currentLang = lang;
+      document.documentElement.lang = lang === 'km' ? 'km' : 'zh-Hant';
+      
+      const btnZh = document.getElementById('lang-zh');
+      const btnEn = document.getElementById('lang-en');
+      const btnKm = document.getElementById('lang-km');
+      
+      const activeClass = "px-2.5 py-1 text-xs font-semibold rounded transition-all bg-indigo-600 text-white";
+      const inactiveClass = "px-2.5 py-1 text-xs font-semibold rounded transition-all text-slate-400 hover:text-white";
+
+      btnZh.className = (lang === 'zh') ? activeClass : inactiveClass;
+      btnEn.className = (lang === 'en') ? activeClass : inactiveClass;
+      btnKm.className = (lang === 'km') ? activeClass : inactiveClass;
+
+      const d = translations[lang];
+      document.getElementById('nav-title').innerText = d.navTitle;
+      document.getElementById('form-title').innerHTML = `<svg class="w-5 h-5 mr-1.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>${d.formTitle}`;
+      document.getElementById('lbl-task-title').innerText = d.lblTaskTitle;
+      document.getElementById('lbl-task-owner').innerText = d.lblTaskOwner;
+      document.getElementById('lbl-task-date').innerText = d.lblTaskDate;
+      document.getElementById('btn-add-txt').innerText = d.btnAddTask;
+      document.getElementById('btn-reset-txt').innerText = d.btnReset;
+      document.getElementById('btn-export-txt').innerText = d.btnExport;
+      document.getElementById('btn-print-txt').innerText = d.btnPrint;
+      document.getElementById('btn-sample-txt').innerText = d.btnSample;
+      
+      document.getElementById('col-todo-title').innerText = d.colTodo;
+      document.getElementById('col-doing-title').innerText = d.colDoing;
+      document.getElementById('col-done-title').innerText = d.colDone;
+
+      document.getElementById('tab-txt-todo').innerText = d.colTodoMobile;
+      document.getElementById('tab-txt-doing').innerText = d.colDoingMobile;
+      document.getElementById('tab-txt-done').innerText = d.colDoneMobile;
+
+      document.getElementById('input-title').placeholder = d.placeholderTitle;
+      document.getElementById('input-owner').placeholder = d.placeholderOwner;
+
+      document.getElementById('modal-edit-title').innerText = d.modalEditTitle;
+      document.getElementById('lbl-edit-name').innerText = d.lblEditName;
+      document.getElementById('lbl-edit-owner').innerText = d.lblEditOwner;
+      document.getElementById('lbl-edit-progress').innerText = d.lblEditProgress;
+      document.getElementById('lbl-edit-issue').innerText = d.lblEditIssue;
+      document.getElementById('edit-input-progress').placeholder = d.placeholderProgress;
+      document.getElementById('edit-input-issues').placeholder = d.placeholderIssue;
+      document.getElementById('btn-edit-cancel').innerText = d.btnEditCancel;
+      document.getElementById('btn-edit-save').innerText = d.btnEditSave;
+
+      document.getElementById('modal-export-title').innerText = d.modalExportTitle;
+      document.getElementById('txt-export-tip').innerText = d.txtExportTip;
+      document.getElementById('btn-export-close').innerText = d.btnExportClose;
+      document.getElementById('btn-copy-txt').innerText = d.btnCopyAction;
+
+      document.getElementById('print-signature-contractor').innerText = d.printContractor;
+      document.getElementById('print-signature-client').innerText = d.printClient;
+
+      // 更新同步狀態橫條的語言
+      const syncStatus = document.getElementById('sync-status');
+      if (syncStatus.innerText.includes("連線") || syncStatus.innerText.includes("Cloud") || syncStatus.innerText.includes("ប្រព័ន្ធ")) {
+        syncStatus.innerText = lang === 'zh' ? "雲端即時連線中 (Live Cloud Sync)" : (lang === 'en' ? "Live Cloud Sync Active" : "ការភ្ជាប់ក្លោដភ្លាមៗ (Live Cloud)");
+      } else {
+        syncStatus.innerText = lang === 'zh' ? "離線儲存模式 (Offline Local Mode)" : (lang === 'en' ? "Offline Local Mode Active" : "របៀបរក្សាទុកពេលគ្មានអ៊ីនធឺណិត (Offline)");
+      }
+
+      renderBoard();
+    }
+
+    // 12. 渲染看板介面
+    function renderBoard() {
+      const colTodo = document.getElementById('column-todo');
+      const colDoing = document.getElementById('column-doing');
+      const colDone = document.getElementById('column-done');
+
+      colTodo.innerHTML = '';
+      colDoing.innerHTML = '';
+      colDone.innerHTML = '';
+
+      let countTodo = 0, countDoing = 0, countDone = 0;
+      const d = translations[currentLang];
+
+      tasks.forEach(task => {
+        const card = document.createElement('div');
+        card.className = "bg-white p-4 rounded-lg shadow-sm border border-slate-200 transition-all hover:shadow-md relative overflow-hidden flex flex-col justify-between space-y-3";
+        
+        let leftBarColor = 'bg-slate-300';
+        if (task.status === 'doing') leftBarColor = 'bg-amber-400';
+        if (task.status === 'done') leftBarColor = 'bg-emerald-500';
+        if (task.issues) leftBarColor = 'bg-rose-500';
+
+        card.innerHTML = `
+          <div class="absolute left-0 top-0 bottom-0 w-1.5 ${leftBarColor}"></div>
+          <div class="pl-2">
+            <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1">
+              <span>📅 ${task.date}</span>
+              <span class="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-medium">👤 ${task.owner}</span>
+            </div>
+            
+            <h4 class="font-bold text-slate-800 text-sm mb-2 leading-snug">${task.title}</h4>
+            
+            ${task.progress ? `
+              <div class="bg-slate-50 border border-slate-100 p-2 rounded text-xs text-slate-600 mb-2 leading-relaxed">
+                <span class="font-semibold text-slate-700">${currentLang === 'zh' ? '📝 進度:' : (currentLang === 'en' ? '📝 Progress:' : '📝 វឌ្ឍនភាព:')}</span> ${task.progress}
+              </div>
+            ` : `
+              <div class="text-[11px] text-slate-400 italic mb-2">
+                ${task.status === 'todo' ? d.statusNoStarted : (task.status === 'doing' ? d.statusDoing : d.statusDone)}
+              </div>
+            `}
+
+            ${task.issues ? `
+              <div class="bg-rose-50 border border-rose-100 text-rose-700 p-2 rounded text-xs leading-relaxed flex items-start space-x-1">
+                <svg class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                <span><strong class="font-semibold">${currentLang === 'zh' ? '⚠️ 異常:' : (currentLang === 'en' ? '⚠️ Issue:' : '⚠️ បញ្ហា:')}</strong> ${task.issues}</span>
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="flex justify-between items-center pt-2 border-t border-slate-100 no-print flex-wrap gap-y-2">
+            <div class="flex space-x-1">
+              <button onclick="openEditModal('${task.id}')" class="text-slate-500 hover:text-indigo-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center space-x-0.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                <span>${d.btnEdit}</span>
+              </button>
+              <button onclick="confirmDelete('${task.id}')" class="text-rose-500 hover:text-rose-700 hover:bg-rose-50 px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center space-x-0.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7"></path></svg>
+                <span>${d.btnDelete}</span>
+              </button>
+            </div>
+
+            <div class="flex justify-end">
+              ${task.status === 'todo' ? `
+                <button onclick="moveTask('${task.id}', 'doing')" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition flex items-center space-x-0.5">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path></svg>
+                  <span>${d.btnStart}</span>
+                </button>
+              ` : ''}
+              ${task.status === 'doing' ? `
+                <button onclick="moveTask('${task.id}', 'done')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition flex items-center space-x-0.5">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"></path></svg>
+                  <span>${d.btnDone}</span>
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+
+        if (task.status === 'todo') {
+          colTodo.appendChild(card);
+          countTodo++;
+        } else if (task.status === 'doing') {
+          colDoing.appendChild(card);
+          countDoing++;
+        } else if (task.status === 'done') {
+          colDone.appendChild(card);
+          countDone++;
+        }
+      });
+
+      document.getElementById('count-todo').innerText = countTodo;
+      document.getElementById('count-doing').innerText = countDoing;
+      document.getElementById('count-done').innerText = countDone;
+
+      document.getElementById('tab-badge-todo').innerText = countTodo;
+      document.getElementById('tab-badge-doing').innerText = countDoing;
+      document.getElementById('tab-badge-done').innerText = countDone;
+
+      switchMobileTab(activeMobileTab);
+    }
+
+    // 13. 行動端頁籤切換
+    function switchMobileTab(tab) {
+      activeMobileTab = tab;
+      
+      const todoWrapper = document.getElementById('col-todo-wrapper');
+      const doingWrapper = document.getElementById('col-doing-wrapper');
+      const doneWrapper = document.getElementById('col-done-wrapper');
+      
+      const btnTodo = document.getElementById('tab-btn-todo');
+      const btnDoing = document.getElementById('tab-btn-doing');
+      const btnDone = document.getElementById('tab-btn-done');
+
+      if (tab === 'todo') {
+        todoWrapper.classList.remove('hidden');
+        todoWrapper.classList.add('flex');
+        doingWrapper.classList.add('hidden');
+        doingWrapper.classList.remove('flex');
+        doneWrapper.classList.add('hidden');
+        doneWrapper.classList.remove('flex');
+        
+        btnTodo.className = "flex-1 py-2.5 rounded-lg text-xs font-bold transition duration-200 flex items-center justify-center space-x-1 bg-slate-200 text-slate-800";
+        btnDoing.className = "flex-1 py-2.5 rounded-lg text-xs font-bold transition duration-200 flex items-center justify-center space-x-1 text-slate-500 hover:bg-slate-50";
+        btnDone.className = "flex-1 py-2.5 rounded-lg text-xs font-bold transition duration-200 flex items-center justify-center space-x-1 text-slate-500 hover:bg-slate-50";
+      } else if (tab === 'doing') {
+        todoWrapper.classList.add('hidden');
+        todoWrapper.classList.remove('flex');
+        doingWrapper.classList.remove('hidden');
+        doingWrapper.classList.add('flex');
+        doneWrapper.classList.add('hidden');
+        doneWrapper.classList.remove('flex');
+        
+        btnTodo.className = "flex-1 py-2.5 rounded-lg text-xs font-bold transition duration-200 flex items-center justify-center space-x-1 text-slate-500 hover:bg-slate-50";
+        btnDoing.className = "flex-1 py-2.5 rounded-lg text-xs font-bold transition duration-200 flex items-center justify-center space-x-1 bg-amber-500 text-white shadow-sm";
+        btnDone.className = "flex-1 py-2.5 rounded-lg text-xs font-bold transition duration-200 flex items-center justify-center space-x-1 text-slate-500 hover:bg-slate-50";
+      } else if (tab === 'done') {
+        todoWrapper.classList.add('hidden');
+        todoWrapper.classList.remove('flex');
+        doingWrapper.classList.add('hidden');
+        doingWrapper.classList.remove('flex');
+        doneWrapper.classList.remove('hidden');
+        doneWrapper.classList.add('flex');
+        
+        btnTodo.className = "flex-1 py-2.5 rounded-lg text-xs font-bold transition duration-200 flex items-center justify-center space-x-1 text-slate-500 hover:bg-slate-50";
+        btnDoing.className = "flex-1 py-2.5 rounded-lg text-xs font-bold transition duration-200 flex items-center justify-center space-x-1 text-slate-500 hover:bg-slate-50";
+        btnDone.className = "flex-1 py-2.5 rounded-lg text-xs font-bold transition duration-200 flex items-center justify-center space-x-1 bg-emerald-500 text-white shadow-sm";
+      }
+
+      todoWrapper.classList.add('lg:flex');
+      doingWrapper.classList.add('lg:flex');
+      doneWrapper.classList.add('lg:flex');
+    }
+
+    // 14. 編輯工作詳情 Modal 控制
+    function openEditModal(id) {
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+
+      document.getElementById('edit-task-id').value = task.id;
+      document.getElementById('edit-input-title').value = task.title;
+      document.getElementById('edit-input-owner').value = task.owner;
+      document.getElementById('edit-input-progress').value = task.progress || '';
+      document.getElementById('edit-input-issues').value = task.issues || '';
+
+      document.getElementById('edit-modal').classList.remove('hidden');
+    }
+
+    function closeEditModal() {
+      document.getElementById('edit-modal').classList.add('hidden');
+    }
+
+    // 15. WeChat / Telegram 報表格式生成
+    function openExportModal() {
+      document.getElementById('export-modal').classList.remove('hidden');
+      switchExportPlatform(currentExportPlatform);
+    }
+
+    function closeExportModal() {
+      document.getElementById('export-modal').classList.add('hidden');
+    }
+
+    function switchExportPlatform(platform) {
+      currentExportPlatform = platform;
+      const btnWechat = document.getElementById('tab-wechat');
+      const btnTelegram = document.getElementById('tab-telegram');
+      const btnCopyAction = document.getElementById('btn-copy-action');
+
+      if (platform === 'wechat') {
+        btnWechat.className = "flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1 bg-emerald-600 text-white";
+        btnTelegram.className = "flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1 bg-slate-200 text-slate-700 hover:bg-slate-300";
+        btnCopyAction.className = "px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition flex items-center space-x-1";
+      } else {
+        btnWechat.className = "flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1 bg-slate-200 text-slate-700 hover:bg-slate-300";
+        btnTelegram.className = "flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1 bg-sky-600 text-white";
+        btnCopyAction.className = "px-4 py-2 text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white rounded-lg transition flex items-center space-x-1";
+      }
+
+      generateReportText();
+    }
+
+    function generateReportText() {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todoList = tasks.filter(t => t.status === 'todo');
+      const doingList = tasks.filter(t => t.status === 'doing');
+      const doneList = tasks.filter(t => t.status === 'done');
+
+      let text = "";
+      const isTelegram = (currentExportPlatform === 'telegram');
+
+      if (currentLang === 'zh') {
+        if (isTelegram) {
+          text += `*【專案工作日報表】*\n日期：${todayStr}\n---------------------------------\n\n`;
+          text += `*■ 今日已完成工作：*\n`;
+          if (doneList.length === 0) text += `(無)\n`;
+          doneList.forEach((t, i) => {
+            text += `${i+1}. *[${t.owner}]* ${t.title}\n`;
+            if (t.progress) text += `   - 進度：${t.progress}\n`;
+          });
+          text += `\n*■ 現場進行中工作：*\n`;
+          if (doingList.length === 0) text += `(無)\n`;
+          doingList.forEach((t, i) => {
+            text += `${i+1}. *[${t.owner}]* ${t.title}\n`;
+            if (t.progress) text += `   - 進度：${t.progress}\n`;
+            if (t.issues) text += `   - 異常：${t.issues}\n`;
+          });
+          text += `\n*■ 明日預計工作：*\n`;
+          if (todoList.length === 0) text += `(無)\n`;
+          todoList.forEach((t, i) => {
+            text += `${i+1}. *[${t.owner}]* ${t.title}\n`;
+          });
+        } else {
+          text += `【專案工作日報表】\n日期：${todayStr}\n---------------------------------\n\n`;
+          text += `■ 今日已完成工作：\n`;
+          if (doneList.length === 0) text += `(無)\n`;
+          doneList.forEach((t, i) => {
+            text += `${i+1}. [${t.owner}] ${t.title}\n`;
+            if (t.progress) text += `   - 進度：${t.progress}\n`;
+          });
+          text += `\n■ 現場進行中工作：\n`;
+          if (doingList.length === 0) text += `(無)\n`;
+          doingList.forEach((t, i) => {
+            text += `${i+1}. [${t.owner}] ${t.title}\n`;
+            if (t.progress) text += `   - 進度：${t.progress}\n`;
+            if (t.issues) text += `   - 異常：${t.issues}\n`;
+          });
+          text += `\n■ 明日預計工作：\n`;
+          if (todoList.length === 0) text += `(無)\n`;
+          todoList.forEach((t, i) => {
+            text += `${i+1}. [${t.owner}] ${t.title}\n`;
+          });
+        }
+      } else if (currentLang === 'en') {
+        if (isTelegram) {
+          text += `*Daily Work Progress Report*\nDate: ${todayStr}\n---------------------------------\n\n`;
+          text += `*1. Completed Tasks Today:*\n`;
+          if (doneList.length === 0) text += `(None)\n`;
+          doneList.forEach((t, i) => {
+            text += `${i+1}. *[${t.owner}]* ${t.title}\n`;
+            if (t.progress) text += `   - Progress: ${t.progress}\n`;
+          });
+          text += `\n*2. Tasks In Progress:*\n`;
+          if (doingList.length === 0) text += `(None)\n`;
+          doingList.forEach((t, i) => {
+            text += `${i+1}. *[${t.owner}]* ${t.title}\n`;
+            if (t.progress) text += `   - Status: ${t.progress}\n`;
+            if (t.issues) text += `   - Issue: ${t.issues}\n`;
+          });
+          text += `\n*3. Tomorrow's Scheduled Tasks:*\n`;
+          if (todoList.length === 0) text += `(None)\n`;
+          todoList.forEach((t, i) => {
+            text += `${i+1}. *[${t.owner}]* ${t.title}\n`;
+          });
+        } else {
+          text += `Daily Work Progress Report\nDate: ${todayStr}\n---------------------------------\n\n`;
+          text += `1. Completed Tasks Today:\n`;
+          if (doneList.length === 0) text += `(None)\n`;
+          doneList.forEach((t, i) => {
+            text += `${i+1}. [${t.owner}] ${t.title}\n`;
+            if (t.progress) text += `   - Progress: ${t.progress}\n`;
+          });
+          text += `\n2. Tasks In Progress:\n`;
+          if (doingList.length === 0) text += `(None)\n`;
+          doingList.forEach((t, i) => {
+            text += `${i+1}. [${t.owner}] ${t.title}\n`;
+            if (t.progress) text += `   - Status: ${t.progress}\n`;
+            if (t.issues) text += `   - Issue: ${t.issues}\n`;
+          });
+          text += `\n3. Tomorrow's Scheduled Tasks:\n`;
+          if (todoList.length === 0) text += `(None)\n`;
+          todoList.forEach((t, i) => {
+            text += `${i+1}. [${t.owner}] ${t.title}\n`;
+          });
+        }
+      } else {
+        if (isTelegram) {
+          text += `*របាយការណ៍ការងារប្រចាំថ្ងៃ*\nកាលបរិច្ឆេទ: ${todayStr}\n---------------------------------\n\n`;
+          text += `*១. ការងារសម្រេចបានថ្ងៃនេះ៖*\n`;
+          if (doneList.length === 0) text += `(គ្មាន)\n`;
+          doneList.forEach((t, i) => {
+            text += `${i+1}. *[${t.owner}]* ${t.title}\n`;
+            if (t.progress) text += `   - វឌ្ឍនភាព: ${t.progress}\n`;
+          });
+          text += `\n*២. ការងារកំពុងដំណើរការ៖*\n`;
+          if (doingList.length === 0) text += `(គ្មាន)\n`;
+          doingList.forEach((t, i) => {
+            text += `${i+1}. *[${t.owner}]* ${t.title}\n`;
+            if (t.progress) text += `   - ស្ថានភាព: ${t.progress}\n`;
+            if (t.issues) text += `   - បញ្ហា: ${t.issues}\n`;
+          });
+          text += `\n*៣. ការងារគ្រោងទុកស្អែក៖*\n`;
+          if (todoList.length === 0) text += `(គ្មាន)\n`;
+          todoList.forEach((t, i) => {
+            text += `${i+1}. *[${t.owner}]* ${t.title}\n`;
+          });
+        } else {
+          text += `របាយការណ៍ការងារប្រចាំថ្ងៃ\nកាលបរិច្ឆេទ: ${todayStr}\n---------------------------------\n\n`;
+          text += `១. ការងារសម្រេចបានថ្ងៃនេះ៖\n`;
+          if (doneList.length === 0) text += `(គ្មាន)\n`;
+          doneList.forEach((t, i) => {
+            text += `${i+1}. [${t.owner}] ${t.title}\n`;
+            if (t.progress) text += `   - វឌ្ឍនភាព: ${t.progress}\n`;
+          });
+          text += `\n២. ការងារកំពុងដំណើរការ៖\n`;
+          if (doingList.length === 0) text += `(គ្មាន)\n`;
+          doingList.forEach((t, i) => {
+            text += `${i+1}. [${t.owner}] ${t.title}\n`;
+            if (t.progress) text += `   - ស្ថានភាព: ${t.progress}\n`;
+            if (t.issues) text += `   - បញ្ហា: ${t.issues}\n`;
+          });
+          text += `\n៣. ការងារគ្រោងទុកស្អែក៖\n`;
+          if (todoList.length === 0) text += `(គ្មាន)\n`;
+          todoList.forEach((t, i) => {
+            text += `${i+1}. [${t.owner}] ${t.title}\n`;
+          });
+        }
+      }
+
+      document.getElementById('export-textarea').value = text;
+    }
+
+    // 16. 安全剪貼簿複製
+    function copyReportToClipboard() {
+      const textarea = document.getElementById('export-textarea');
+      textarea.select();
+      textarea.setSelectionRange(0, 99999);
+      try {
+        const success = document.execCommand('copy');
+        if (success) {
+          showToast(translations[currentLang].toastCopySuccess);
+        } else {
+          showToast(currentLang === 'zh' ? "複製失敗，請手動全選複製。" : (currentLang === 'en' ? "Copy failed, please select manually." : "ចម្លងមិនបានជោគជ័យទេ សូមជ្រើសរើសចម្លងដោយដៃ។"));
+        }
+      } catch (err) {
+        showToast(currentLang === 'zh' ? "瀏覽器不支援一鍵複製，請手動複製。" : (currentLang === 'en' ? "Not supported, please copy manually." : "កម្មវិធីរុករកមិនគាំទ្រការចម្លងដោយស្វ័យប្រវត្តទេ!"));
+      }
+    }
+
+    // 17. 自訂 Dialog 確認提示
+    function showCustomConfirm(title, msg, onConfirm) {
+      document.getElementById('confirm-title').innerText = title;
+      document.getElementById('confirm-message').innerText = msg;
+      const confirmModal = document.getElementById('confirm-modal');
+      confirmModal.classList.remove('hidden');
+
+      activeConfirmAction = onConfirm;
+      document.getElementById('confirm-btn-yes').onclick = function() {
+        if (activeConfirmAction) activeConfirmAction();
+        closeConfirmModal();
+      };
+    }
+
+    function closeConfirmModal() {
+      document.getElementById('confirm-modal').classList.add('hidden');
+      activeConfirmAction = null;
+    }
+
+    // 18. 自訂 Toast 提示
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-message').innerText = msg;
+      
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+
+    // ESM Module 下，將所有 HTML 調用的函數綁定至 window 物件 (關鍵防錯)
+    window.switchLanguage = switchLanguage;
+    window.confirmReset = confirmReset;
+    window.addTask = addTask;
+    window.openExportModal = openExportModal;
+    window.closeExportModal = closeExportModal;
+    window.switchExportPlatform = switchExportPlatform;
+    window.copyReportToClipboard = copyReportToClipboard;
+    window.loadSampleData = loadSampleData;
+    window.switchMobileTab = switchMobileTab;
+    window.openEditModal = openEditModal;
+    window.closeEditModal = closeEditModal;
+    window.saveTaskEdit = saveTaskEdit;
+    window.confirmDelete = confirmDelete;
+    window.closeConfirmModal = closeConfirmModal;
+    window.moveTask = moveTask;
+
+    // 頁面初次載入設定
+    document.addEventListener('DOMContentLoaded', () => {
+      initSystem(); // 執行自適應初始化防當機核心
+    });
+  </script>
+</body>
+</html>
