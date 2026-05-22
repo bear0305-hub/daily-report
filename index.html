@@ -1277,5 +1277,73 @@
       initSystem(); // 執行自適應初始化防當機核心
     });
   </script>
+  <script type="module">
+  // 1. 從網路（CDN）引入前端專用的 Firebase 核心與 Firestore 資料庫功能
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  // 2. 你的專屬網頁端 Firebase 驗證資訊
+  const firebaseConfig = {
+    apiKey: "AIzaSyCKhcnG1CP7S6szlXorSHlkPQJ-yFsKMR0",
+    authDomain: "daily-report-db.firebaseapp.com",
+    databaseURL: "https://daily-report-db-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "daily-report-db",
+    storageBucket: "daily-report-db.firebasestorage.app",
+    messagingSenderId: "515904311865",
+    appId: "1:515904311865:web:801750fe5334f928ed73e8"
+  };
+
+  // 3. 初始化 Firebase 連線
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  
+  // 指定資料庫裡的資料夾名稱叫作 reports (日報)
+  const reportsRef = collection(db, "reports");
+
+  // ========================================================
+  // 4. 【你要做的事情 A】：當點擊「送出按鈕」時，把資料推上雲端
+  // ========================================================
+  // 💡 請把 "mySubmitBtn" 改成你網頁上「送出按鈕」的 id
+  // 💡 請把 "myInput" 改成你網頁上「文字輸入框」的 id
+  document.getElementById("mySubmitBtn").addEventListener("click", async () => {
+    const content = document.getElementById("myInput").value;
+    if (!content.trim()) return alert("請輸入日報內容！");
+
+    try {
+      // 這行會直接把資料同步到所有人的手機上
+      await addDoc(reportsRef, {
+        text: content,
+        timestamp: new Date() // 記錄填寫時間
+      });
+      document.getElementById("myInput").value = ""; // 送出後自動清空輸入框
+    } catch (error) {
+      console.error("同步失敗:", error);
+    }
+  });
+
+  // ========================================================
+  // 5. 【你要做的事情 B】：即時監聽雲端，自動更新所有人的手機畫面
+  // ========================================================
+  // 設定排序規則：按照時間由新到舊排序
+  const q = query(reportsRef, orderBy("timestamp", "desc"));
+  
+  // 只要資料庫一有變動，這段程式碼就會自動在所有人的手機上觸發
+  onSnapshot(q, (snapshot) => {
+    // 💡 請把 "myReportList" 改成你網頁上用來顯示日報列表的 <ul> 或 <div> 的 id
+    const listElement = document.getElementById("myReportList"); 
+    listElement.innerHTML = ""; // 先清空舊的畫面內容
+
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      
+      // 這裡建立一個新的列表項目，把雲端資料塞進去
+      const li = document.createElement("li");
+      li.textContent = data.text;
+      
+      // 把新日報塞進畫面的列表容器中
+      listElement.appendChild(li); 
+    });
+  });
+</script>
 </body>
 </html>
